@@ -180,6 +180,31 @@ func (e *Exporter) initGauges() {
 		Name:      "command_call_duration_seconds_sum",
 		Help:      "Total amount of time in seconds spent per command",
 	}, []string{"addr", "alias", "cmd"})
+	e.metrics["command_call_qps"] = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: e.namespace,
+		Name:      "command_call_qps",
+		Help:      "QPS per command",
+	}, []string{"addr", "alias", "cmd"})
+	e.metrics["command_call_rt"] = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: e.namespace,
+		Name:      "command_call_rt",
+		Help:      "The mean response time per command",
+	}, []string{"addr", "alias", "cmd"})
+	e.metrics["command_call_max_rt"] = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: e.namespace,
+		Name:      "command_call_max_rt",
+		Help:      "The max response time per command",
+	}, []string{"addr", "alias", "cmd"})
+	e.metrics["command_call_request_len"] = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: e.namespace,
+		Name:      "command_call_request_len",
+		Help:      "The mean request len per command",
+	}, []string{"addr", "alias", "cmd"})
+	e.metrics["command_call_response_len"] = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: e.namespace,
+		Name:      "command_call_response_len",
+		Help:      "The mean response len spent per command",
+	}, []string{"addr", "alias", "cmd"})
 }
 
 // NewRedisExporter returns a new exporter of Redis metrics.
@@ -466,12 +491,17 @@ func (e *Exporter) extractInfoMetrics(info, addr string, alias string, scrapes c
 			cmd := frags[1]
 
 			frags = strings.Split(split[1], ",")
-			if len(frags) != 3 {
+			if len(frags) < 3 {
 				continue
 			}
 
 			var calls float64
 			var usecTotal float64
+			var qps float64
+			var rt float64
+			var maxRt float64
+			var requestLen float64
+			var responseLen float64
 			var err error
 			if calls, err = extractVal(frags[0]); err != nil {
 				continue
@@ -479,10 +509,30 @@ func (e *Exporter) extractInfoMetrics(info, addr string, alias string, scrapes c
 			if usecTotal, err = extractVal(frags[1]); err != nil {
 				continue
 			}
+			if qps, err = extractVal(frags[3]); err != nil {
+				continue
+			}
+			if rt, err = extractVal(frags[3]); err != nil {
+				continue
+			}
+			if maxRt, err = extractVal(frags[3]); err != nil {
+				continue
+			}
+			if requestLen, err = extractVal(frags[3]); err != nil {
+				continue
+			}
+			if responseLen, err = extractVal(frags[3]); err != nil {
+				continue
+			}
 
 			e.metricsMtx.RLock()
 			e.metrics["command_call_duration_seconds_count"].WithLabelValues(addr, alias, cmd).Set(calls)
 			e.metrics["command_call_duration_seconds_sum"].WithLabelValues(addr, alias, cmd).Set(usecTotal / 1e6)
+			e.metrics["command_call_qps"].WithLabelValues(addr, alias, cmd).Set(qps)
+			e.metrics["command_call_rt"].WithLabelValues(addr, alias, cmd).Set(rt / 1e6)
+			e.metrics["command_call_max_rt"].WithLabelValues(addr, alias, cmd).Set(maxRt / 1e6)
+			e.metrics["command_call_request_len"].WithLabelValues(addr, alias, cmd).Set(requestLen)
+			e.metrics["command_call_response_len"].WithLabelValues(addr, alias, cmd).Set(responseLen)
 			e.metricsMtx.RUnlock()
 			continue
 		}
